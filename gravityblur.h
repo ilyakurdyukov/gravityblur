@@ -24,14 +24,6 @@ static void gravityblur(bitmap_t *in, bitmap_t *out, float range, float c0, int 
 	int iter, j, x, y;
 	float c1 = c0 * sqrtf(0.5f);
 
-	// copy extra channels
-	for (y = 0; y < h; y++)
-	for (x = 0; x < w; x++)
-	for (j = 3; j < bpp; j++) {
-		int c = in_data[y*stride+x*bpp+j];
-		out_data[y*ostride+x*bpp+j] = c;
-	}
-
 #define M4(i) \
 	b##i -= (int)roundf(a##i / an); \
 	if (b##i < 0) b##i = 0; \
