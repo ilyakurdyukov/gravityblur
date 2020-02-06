@@ -11,6 +11,8 @@ The original project page is [here](https://github.com/ilyakurdyukov/gravityblur
 Web version available [here](https://ilyakurdyukov.github.io/gravityblur/).
 Images are processed locally on your computer.
 
+- Click the "Load" button or drag-n-drop image into the browser window. After processing is complete, you can save the result by clicking the "Save" button. You can edit the *filename* field before saving to change the image format (jpeg or png, JPEG images are saved at 100% quality). The *options* field is passed to the *wasm* code when you initiate a processing by loading a file.
+
 ## Usage
 
 `gravblur [options] input.[png|jpg|jpeg] output.[png|jpg|jpeg]`
