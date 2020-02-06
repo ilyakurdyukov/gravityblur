@@ -1,0 +1,209 @@
+<!doctype html>
+<html>
+  <head>
+		<meta charset="utf-8">
+		<title>Gravity Blur (WebAssembly)</title>
+  </head>
+  <body>
+		<div id="droparea" align="center">
+			<button id="load" disabled>Load</button>
+			<button id="save" disabled>Save</button>
+			<br>
+			options:<br>
+			<input id="cmdline" type="text" value="-r 10 -s 50 -n 3"></input><br>
+			filename:<br>
+			<input id="filename" type="text" value="<empty>"></input><br>
+			<br>
+		  <div id="status">You need to enable JavaScript to run this app.</div>
+		  <div>
+				<progress value=0 max=100 id="progress" hidden=true></progress>  
+		  </div>
+		  <textarea id="output" cols=80 rows=24 readonly style="resize: none;"></textarea>
+		<div>
+
+    <script type='text/javascript'>
+
+var statusElement = document.getElementById('status');
+var progressElement = document.getElementById('progress');
+var outputElement = document.getElementById('output');
+var loadElement = document.getElementById('load');
+var saveElement = document.getElementById('save');
+outputElement.value = '';
+loadElement.disabled = true;
+saveElement.disabled = true;
+
+/* var */ Module = {
+  preRun: [],
+  postRun: function() {
+		initDrop();
+		loadElement.onclick = cbLoad;
+		saveElement.onclick = cbSave;
+		loadElement.disabled = false;
+  },
+  print: function(text) {
+    if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+    console.log(text);
+    outputElement.value += text + "\n";
+    outputElement.scrollTop = outputElement.scrollHeight; // focus on bottom
+  },
+  printErr: function(text) {
+    if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+    // console.error(text);
+    console.log(text);
+    outputElement.value += "!!! " + text + "\n";
+    outputElement.scrollTop = outputElement.scrollHeight; // focus on bottom
+  },
+  setStatus: function(text) {
+    if (!Module.setStatus.last) Module.setStatus.last = { time: Date.now(), text: '' };
+    if (text === Module.setStatus.last.text) return;
+    var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+    var now = Date.now();
+    if (m && now - Module.setStatus.last.time < 30) return; // if this is a progress update, skip it if too soon
+    Module.setStatus.last.time = now;
+    Module.setStatus.last.text = text;
+    if (m) {
+      text = m[1];
+      progressElement.value = parseInt(m[2])*100;
+      progressElement.max = parseInt(m[4])*100;
+      progressElement.hidden = false;
+    } else {
+      progressElement.hidden = true;
+    }
+    statusElement.innerHTML = text;
+  },
+  totalDependencies: 0,
+  monitorRunDependencies: function(left) {
+    this.totalDependencies = Math.max(this.totalDependencies, left);
+    Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies-left) + '/' + this.totalDependencies + ')' : 'All downloads complete.');
+  }
+};
+Module.setStatus('Downloading...');
+window.onerror = function() {
+  Module.setStatus('Exception thrown, see JavaScript console');
+  Module.setStatus = function(text) {
+    if (text) Module.printErr('[post-exception status] ' + text);
+  };
+};
+/*============================================================================*/
+var out_canvas = null;
+
+function cbProcessImage(img) {
+	var canvas = document.createElement('canvas');
+	canvas.width = img.width;
+	canvas.height = img.height;
+	var ctx = canvas.getContext('2d');
+	ctx.drawImage(img, 0, 0);
+	data = ctx.getImageData(0, 0, img.width, img.height).data;
+
+	var cmdline = document.getElementById('cmdline').value;
+	var cmd_size = cmdline.length;
+
+	var inp_size = data.length;
+	var prm_addr = Module._malloc(5*4 + inp_size + cmd_size + 1);
+	Module.HEAPU8.set(new Uint8Array(5*4), prm_addr);
+	var inp_addr = prm_addr + 5*4;
+	var cmd_addr = prm_addr + 5*4 + inp_size;
+
+	Module.HEAPU8.set(data, inp_addr);
+
+	for (var i = 0; i < cmd_size; i++) {
+		var c = cmdline.charCodeAt(i);
+		if (c > 127) c = '?'.charCodeAt(0);
+		Module.HEAPU8[cmd_addr + i] = c; 
+	}
+	Module.HEAPU8[cmd_addr + cmd_size] = 0;
+
+	Module.print("Processing...");
+
+	var bpp = 4, stride = img.width * bpp;
+	Module.HEAPU32[prm_addr/4] = img.width;
+	Module.HEAPU32[prm_addr/4 + 1] = img.height;
+	Module.HEAPU32[prm_addr/4 + 2] = bpp;
+	Module.HEAPU32[prm_addr/4 + 3] = stride;
+	Module.HEAPU32[prm_addr/4 + 4] = inp_addr;
+
+	var out_addr = Module._web_process(prm_addr, cmd_addr);
+	Module._free(prm_addr);
+	if (out_addr) {
+		var width = Module.HEAPU32[out_addr/4];
+		var height = Module.HEAPU32[out_addr/4 + 1];
+		var stride = Module.HEAPU32[out_addr/4 + 3]
+		var addr = Module.HEAPU32[out_addr/4 + 4];
+		var data = Module.HEAPU8.slice(addr, out_addr + stride * height);
+
+		canvas.width = width;
+		canvas.height = height;
+		var bitmap = ctx.getImageData(0, 0, width, height);
+		bitmap.data.set(data, 0);
+		ctx.putImageData(bitmap, 0, 0);
+
+		Module._free(out_addr);
+	} else canvas = null;
+	return canvas;
+}
+
+function initDrop() {
+	var dropArea = document; // .getElementById('droparea');
+	['dragenter', 'dragover', 'dragleave', 'drop'].forEach(function(eventName) {
+		function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+		dropArea.addEventListener(eventName, preventDefaults, false);
+	})
+	dropArea.addEventListener('drop', handleDrop, false);
+
+	function handleDrop(e) {
+		var list = e.dataTransfer.files;
+		if (list.length == 1) readFile(list[0]);
+		else alert("Multiple file drop unsupported.");
+	}
+}
+
+function readFile(file) {
+	Module.print("Loading \"" + file.name + "\"");
+	document.getElementById('filename').value = file.name;
+
+	var reader = new FileReader();
+	reader.onload = function(e) {
+		saveElement.disabled = true;
+		var img = document.createElement('img');
+		img.onload = function() {
+			out_canvas = null;
+			Module.print("Image: " + img.width + "x" + img.height + ", " + file.type);
+			out_canvas = cbProcessImage(img);
+			saveElement.disabled = out_canvas === null;
+		};
+		img.src = e.target.result;
+	};
+	reader.readAsDataURL(file);
+}
+
+function cbLoad() {
+	var input = document.createElement('input');
+	input.type = 'file';
+	input.accept = 'image/unknown';
+	input.onchange = function(e) { 
+		var file = e.target.files[0];
+		readFile(file);
+	}
+	input.click();
+}
+
+function cbSave() {
+	if (out_canvas !== null) {
+		var fn = document.getElementById('filename').value
+		var link = document.createElement('a');
+		var ext = fn.lastIndexOf('.');
+		ext = ext < 1 ? '' : fn.substring(ext).toLowerCase();
+		if (ext === '.jpg' || ext === '.jpeg')
+			link.href = out_canvas.toDataURL('image/jpeg', 1.0);
+		else link.href = out_canvas.toDataURL('image/png');
+		link.download = fn;
+		link.click();
+	} else {
+		alert("data undefined");
+	}
+}
+/*============================================================================*/
+    </script>
+    {{{ SCRIPT }}}
+  </body>
+</html>

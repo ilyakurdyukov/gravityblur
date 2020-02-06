@@ -23,6 +23,12 @@
 #include <stdint.h>
 #include <math.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#else
+#define EMSCRIPTEN_KEEPALIVE
+#endif
+
 #include <time.h>
 #include <sys/time.h>
 static int64_t get_time_usec() {
@@ -31,6 +37,10 @@ static int64_t get_time_usec() {
 	return (int64_t)time.tv_sec * 1000000 + time.tv_usec;
 }
 
+#include "bitmap.h"
+#ifndef WASM
+#include "pngio.h"
+#include "jpegio.h"
 #define stricmp stricmp_simple
 static int stricmp(const char *s1, const char *s2) {
 	char a, b;
@@ -41,10 +51,7 @@ static int stricmp(const char *s1, const char *s2) {
 	} while (a == b && a);
 	return a - b;
 }
-
-#include "bitmap.h"
-#include "pngio.h"
-#include "jpegio.h"
+#endif
 
 #include "gravityblur.h"
 
@@ -79,56 +86,114 @@ static bitmap_t* process_image(bitmap_t *in,
 #define LESS_CONV 1
 #endif
 
+#ifdef WASM
+static char** make_argv(char *str, int *argc_ret) {
+	int i = 0, eol = 0, argc = 1; char **argv;
+	for (;;) {
+		char a = str[i++];
+		if (!a) break;
+		if (eol) {
+			if (a == eol) eol = 0;
+		} else {
+			if (a != ' ') {
+				eol = ' ';
+				if (a == '"' || a == '\'') eol = a;
+				argc++;
+			}
+		}
+	}
+	*argc_ret = argc;
+	argv = (char**)malloc(argc * sizeof(char*));
+	if (!argv) return argv;
+	argv[0] = NULL; eol = 0; argc = 1;
+	for (;;) {
+		char a = *str++;
+		if (!a) break;
+		if (eol) {
+			if (a == eol) { str[-1] = 0; eol = 0; }
+		} else {
+			if (a != ' ') {
+				eol = ' ';
+				if (a == '"' || a == '\'') { eol = a; str++; }
+				argv[argc++] = str - 1;
+			}
+		}
+	}
+	return argv;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void* web_process(void *web_ptr, char *cmdline) {
+#else
 int main(int argc, char **argv) {
-	const char *ifn = 0, *ofn = 0; const char *ext;
+#endif
 	int64_t time = 0; bitmap_t *in, *out;
 	int type = BITMAP_RGB, in_type = type, out_type = type;
-	int separate = 0, num_iter = 3, read_jpeg = 0, write_jpeg = 0, info = 3;
+
+	int separate = 0, num_iter = 3, info = 3;
 	float range = 10, sharp = 50;
+#ifdef WASM
+	int argc = 0;
+	char **argv_ptr = make_argv(cmdline, &argc), **argv = argv_ptr;
+	in = (bitmap_t*)web_ptr;
+#else
+	const char *ifn = 0, *ofn = 0; const char *ext;
+	int read_jpeg = 0, write_jpeg = 0;
 	const char *progname = "gravblur";
+#endif
 
 	while (argc > 1) {
-		const char *arg = argv[1];
-		if (arg[0] != '-') break;
-		if (!arg[1]) break;
-		if (!arg[2]) switch (arg[1]) {
-			case 'S': arg = "--separate"; break;
+		const char *arg1 = argv[1], *arg2 = argv[2], *arg = arg1; char c;
+		if (arg[0] != '-' || !(c = arg[1])) break;
+		if (c != '-') switch (c) {
+			case 'S': arg = "--separate"; c = 0; break;
 			case 'r': arg = "--range"; break;
 			case 's': arg = "--sharp"; break;
 			case 'n': arg = "--niter"; break;
 			case 'i': arg = "--info"; break;
-			case 'R': arg = "--rgb"; break;
-			case 'Y': arg = "--yuv"; break;
+			case 'R': arg = "--rgb"; c = 0; break;
+			case 'Y': arg = "--yuv"; c = 0; break;
+			default: c = '-';
+		}
+		if (c != '-' && arg1[2]) {
+			if (!c) break;
+			arg2 = arg1 + 2; argc++; argv--;
 		}
 
+#define CHECKNUM if ((unsigned)(arg2[0] - '0') > 9) break;
 		if (!strcmp("--separate", arg)) {
 			separate = 1; argc--; argv++;
 		} else if (argc > 2 && !strcmp("--range", arg)) {
-			range = atof(argv[2]);
+			CHECKNUM
+			range = atof(arg2);
 			argc -= 2; argv += 2;
 		} else if (argc > 2 && !strcmp("--sharp", arg)) {
-			sharp = atof(argv[2]);
+			CHECKNUM
+			sharp = atof(arg2);
 			argc -= 2; argv += 2;
 		} else if (argc > 2 && !strcmp("--niter", arg)) {
-			num_iter = atoi(argv[2]);
+			CHECKNUM
+			num_iter = atoi(arg2);
 			argc -= 2; argv += 2;
 		} else if (argc > 2 && !strcmp("--info", arg)) {
-			info = atoi(argv[2]);
+			CHECKNUM
+			info = atoi(arg2);
 			argc -= 2; argv += 2;
 		} else if (!strcmp("--rgb", arg)) {
 			type = BITMAP_RGB; argc--; argv++;
 		} else if (!strcmp("--yuv", arg)) {
 			type = BITMAP_YUV; argc--; argv++;
 		} else break;
+#undef CHECKNUM
 	}
 
-	range /= 100; sharp /= 100;
-
-	if (range > 1) range = 1;
-	if (range < 0) range = 0;
-	if (sharp > 1) sharp = 1;
-	if (sharp < 0.01f) sharp = 0.01f;
-
+#ifdef WASM
+	free(argv_ptr);
+	if (argc != 1) {
+		printf("Unrecognized command line option.\n");
+		return NULL;
+	}
+#else
 	if (argc != 3) {
 		printf(
 "Gravity Blur : Copyright (c) 2020 Ilya Kurdyukov\n"
@@ -138,14 +203,14 @@ int main(int argc, char **argv) {
 "  %s [options] input.[png|jpg|jpeg] output.[png|jpg|jpeg]\n"
 "\n"
 "Options:\n"
-"  --range f        Gravity range (0-100)\n"
-"  --sharp f        Sharpness (0-100)\n"
-"  --niter n        Number of iterations (default is 3)\n"
-"  --rgb            Process in RGB (default)\n"
-"  --yuv            Process in YUV\n"
-"  --separate       Separate color components\n"
-"  --info n         Print gravblur debug output:\n"
-"                   0 - silent, 3 - all (default)\n"
+"  -r, --range f     Gravity range (0-100)\n"
+"  -s, --sharp f     Sharpness (0-100)\n"
+"  -n, --niter n     Number of iterations (default is 3)\n"
+"  -R, --rgb         Process in RGB (default)\n"
+"  -Y, --yuv         Process in YUV\n"
+"  -S, --separate    Separate color components\n"
+"  -i, --info n      Print gravblur debug output:\n"
+"                      0 - silent, 3 - all (default)\n"
 "\n", progname);
 		return 1;
 	}
@@ -171,6 +236,13 @@ int main(int argc, char **argv) {
 	}
 
 	if (LESS_CONV && write_jpeg) out_type = type;
+#endif
+
+	range /= 100; sharp /= 100;
+	if (range > 1) range = 1;
+	if (range < 0) range = 0;
+	if (sharp > 1) sharp = 1;
+	if (sharp < 0.01f) sharp = 0.01f;
 
 	if (info & 1) time = get_time_usec();
 	out = process_image(in, in_type, type, out_type,
@@ -180,6 +252,9 @@ int main(int argc, char **argv) {
 		printf("gravblur: %.2f ms\n", time * 0.001);
 	}
 
+#ifdef WASM
+	return out;
+#else
 	if (out) {
 		if (info & 2) time = get_time_usec();
 		if (write_jpeg) {
@@ -197,5 +272,6 @@ int main(int argc, char **argv) {
 	}
 	bitmap_free(in);
 	return 0;
+#endif
 }
 

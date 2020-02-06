@@ -6,19 +6,24 @@ This algorithm preserves sharp edges if the distance between pixel values on the
 
 The original project page is [here](https://github.com/ilyakurdyukov/gravityblur).
 
+## WebAssembly
+
+Web version available [here](https://ilyakurdyukov.github.io/gravityblur/).
+Images are processed locally on your computer.
+
 ## Usage
 
 `gravblur [options] input.[png|jpg|jpeg] output.[png|jpg|jpeg]`
 
 ## Options
 
-`--range f` Gravity range (0-100)  
-`--sharp f` Sharpness (0-100)  
-`--niter n` Number of iterations (default is 3)  
-`--rgb` Process in RGB (default)  
-`--yuv` Process in YUV  
-`--separate ` Separate color components  
-`--info n` Print gravblur debug output: 0 - silent, 3 - all (default)  
+`-r, --range f` Gravity range (0-100)  
+`-s, --sharp f` Sharpness (0-100)  
+`-n, --niter n` Number of iterations (default is 3)  
+`-R, --rgb` Process in RGB (default)  
+`-Y, --yuv` Process in YUV  
+`-S, --separate` Separate color components  
+`-i, --info n` Print gravblur debug output: 0 - silent, 3 - all (default)  
 
 ## Examples
 
