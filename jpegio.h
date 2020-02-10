@@ -107,6 +107,9 @@ void bitmap_write_jpeg_impl(bitmap_t *bm, const char *filename, J_COLOR_SPACE co
 		jpeg_set_defaults(&ci);
 		ci.optimize_coding = TRUE;
 		// ci.dct_method = JDCT_ISLOW;
+		// for JCS_YCbCr libjpeg selects 4:2:0 subsampling by default
+		ci.comp_info[0].h_samp_factor = 1;
+		ci.comp_info[0].v_samp_factor = 1;
 		jpeg_set_quality(&ci, quality, TRUE);
 		jpeg_start_compress(&ci, TRUE);
 
