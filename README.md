@@ -25,6 +25,7 @@ Images are processed locally on your computer.
 `-R, --rgb` Process in RGB (default)  
 `-Y, --yuv` Process in YUV  
 `-S, --separate` Separate color components  
+`-a, --alpha` Use alpha channel  
 `-i, --info n` Print gravblur debug output: 0 - silent, 3 - all (default)  
 
 ## Examples

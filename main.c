@@ -60,7 +60,7 @@ static int stricmp(const char *s1, const char *s2) {
 
 static bitmap_t* process_image(bitmap_t *in,
 		int type1, int type2, int type3,
-		int separate, float range, float sharp, int num_iter) {
+		int flags, float range, float sharp, int num_iter) {
 	int w = in->width, h = in->height, bpp = in->bpp;
 	bitmap_t *out;
 
@@ -71,7 +71,8 @@ static bitmap_t* process_image(bitmap_t *in,
 	out = bitmap_create(w, h, bpp);
 	if (out) {
 		float range2 = range * 256, sharp2 = 1.0f / sharp;
-		if (bpp < 3 || separate) gravityblur(in, out, range2, sharp2, num_iter);
+		if (bpp < 3 || flags & 1) gravityblur(in, out, range2, sharp2, num_iter);
+		if (bpp > 3 && flags & 2) gravityblur4(in, out, range2, sharp2, num_iter);
 		else gravityblur3(in, out, range2, sharp2, num_iter);
 
 		if (type2 != type3) {
@@ -130,7 +131,7 @@ int main(int argc, char **argv) {
 	int64_t time = 0; bitmap_t *in, *out;
 	int type = BITMAP_RGB, in_type = type, out_type = type;
 
-	int separate = 0, num_iter = 3, info = 3;
+	int flags = 0, num_iter = 3, info = 3;
 	float range = 10, sharp = 50;
 #ifdef WASM
 	int argc = 0;
@@ -147,6 +148,7 @@ int main(int argc, char **argv) {
 		if (arg[0] != '-' || !(c = arg[1])) break;
 		if (c != '-') switch (c) {
 			case 'S': arg = "--separate"; c = 0; break;
+			case 'a': arg = "--alpha"; c = 0; break;
 			case 'r': arg = "--range"; break;
 			case 's': arg = "--sharp"; break;
 			case 'n': arg = "--niter"; break;
@@ -162,7 +164,9 @@ int main(int argc, char **argv) {
 
 #define CHECKNUM if ((unsigned)(arg2[0] - '0') > 9) break;
 		if (!strcmp("--separate", arg)) {
-			separate = 1; argc--; argv++;
+			flags |= 1; argc--; argv++;
+		} else if (!strcmp("--alpha", arg)) {
+			flags |= 2; argc--; argv++;
 		} else if (argc > 2 && !strcmp("--range", arg)) {
 			CHECKNUM
 			range = atof(arg2);
@@ -209,6 +213,7 @@ int main(int argc, char **argv) {
 "  -R, --rgb         Process in RGB (default)\n"
 "  -Y, --yuv         Process in YUV\n"
 "  -S, --separate    Separate color components\n"
+"  -a, --alpha       Use alpha channel\n"
 "  -i, --info n      Print gravblur debug output:\n"
 "                      0 - silent, 3 - all (default)\n"
 "\n", progname);
@@ -239,14 +244,14 @@ int main(int argc, char **argv) {
 #endif
 
 	range /= 100; sharp /= 100;
-	if (range > 1) range = 1;
+	if (range > 2) range = 2;
 	if (range < 0) range = 0;
 	if (sharp > 1) sharp = 1;
 	if (sharp < 0.01f) sharp = 0.01f;
 
 	if (info & 1) time = get_time_usec();
 	out = process_image(in, in_type, type, out_type,
-			separate, range, sharp, num_iter);
+			flags, range, sharp, num_iter);
 	if (info & 1) {
 		time = get_time_usec() - time;
 		printf("gravblur: %.2f ms\n", time * 0.001);
