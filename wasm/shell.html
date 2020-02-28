@@ -9,10 +9,10 @@
 			<button id="load" disabled>Load</button>
 			<button id="save" disabled>Save</button>
 			<br>
-			options:<br>
+			Options:<br>
 			<input id="cmdline" type="text" value="-r 10 -s 50 -n 3"></input><br>
-			filename:<br>
-			<input id="filename" type="text" value="<empty>"></input><br>
+			Filename:<br>
+			<input id="filename" type="text" value="" disabled></input><br>
 			<br>
 			<div id="status">You need to enable JavaScript to run this app.</div>
 			<div>
@@ -160,6 +160,7 @@ function initDrop() {
 function readFile(file) {
 	Module.print("Loading \"" + file.name + "\"");
 	document.getElementById('filename').value = file.name;
+	document.getElementById('filename').disabled = false;
 
 	var reader = new FileReader();
 	reader.onload = function(e) {

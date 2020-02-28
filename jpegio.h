@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Kurdyukov Ilya
+ * Copyright (C) 2020 Ilya Kurdyukov
  *
  * jpeg support using libjpeg
  */
@@ -54,7 +54,7 @@ bitmap_t* bitmap_read_jpeg_impl(const char *filename, J_COLOR_SPACE color) {
 			if (mem) {
 				scanline = (JSAMPROW*)mem;
 				for (y = 0; y < height; y++)
-					scanline[y] = (JSAMPLE*)(data + y*stride);
+					scanline[y] = (JSAMPLE*)(data + y * stride);
 
 				while ((y = ci.output_scanline) < height) {
 					jpeg_read_scanlines(&ci, scanline + y, height - y);
@@ -66,7 +66,7 @@ bitmap_t* bitmap_read_jpeg_impl(const char *filename, J_COLOR_SPACE color) {
 	}
 err:
 	if (mem) free(mem);
-	if (!ok) { free(bm); bm = NULL; }
+	if (!ok) { bitmap_free(bm); bm = NULL; }
 	jpeg_destroy_decompress(&ci);
 	if (fp) fclose(fp);
 	return bm;
@@ -117,7 +117,7 @@ void bitmap_write_jpeg_impl(bitmap_t *bm, const char *filename, J_COLOR_SPACE co
 		if (mem) {
 			scanline = (JSAMPROW*)mem;
 			for (y = 0; y < height; y++)
-				scanline[y] = (JSAMPLE*)(data + y*stride);
+				scanline[y] = (JSAMPLE*)(data + y * stride);
 
 			while ((y = ci.next_scanline) < height) {
 				jpeg_write_scanlines(&ci, scanline + y, height - y);

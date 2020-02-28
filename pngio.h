@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Kurdyukov Ilya
+ * Copyright (C) 2020 Ilya Kurdyukov
  *
  * png support using libpng
  */
@@ -62,7 +62,7 @@ bitmap_t* bitmap_read_png(const char *filename) {
 		if (!mem) goto err;
 		row_pointers = (png_bytep*)mem;
 		for (y = 0; y < height; y++)
-			row_pointers[y] = (png_byte*)(data + y*stride);
+			row_pointers[y] = (png_byte*)(data + y * stride);
 
 		png_read_image(png_ptr, row_pointers);
 		errstr = NULL;
@@ -120,7 +120,7 @@ void bitmap_write_png(bitmap_t *bm, const char *filename) {
 		if (!mem) goto err;
 		row_pointers = (png_bytep*)mem;
 		for (y = 0; y < height; y++)
-			row_pointers[y] = (png_byte*)(data + y*stride);
+			row_pointers[y] = (png_byte*)(data + y * stride);
 
 		errstr = "write_image";
 		png_write_image(png_ptr, row_pointers);
